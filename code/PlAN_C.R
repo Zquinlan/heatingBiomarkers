@@ -31,6 +31,7 @@ library(RColorBrewer)
 
 # READING -- dataframes ---------------------------------------------------
 # FCM data
+setwd("~/Documents/GitHub/Plan_C/data/raw/fcm/")
 fcm_files_raw <- dir(path = "~/Documents/GitHub/Plan_C/data/raw/fcm/", pattern = "*.csv")%>%
   map(read_csv)%>%
   map(~ dplyr::select(., c("Plate Name", "Sample Name", "Gate Name", "Event Count")))%>%
@@ -45,6 +46,7 @@ fcm_names <- fcm_names_raw%>%
   set_names(fcm_names_raw)
 
 ## Surface area
+setwd("~/Documents/GitHub/Plan_C/")
 surface_area_raw <- read_csv("~/Documents/GitHub/Plan_C/data/raw/physiology/Nubbin_sizing_notes.csv")
 
 # CLEANING -- FCM ---------------------------------------------------------
