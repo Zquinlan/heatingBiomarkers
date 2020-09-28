@@ -75,20 +75,36 @@ fcm_sybr <- fcm_raw%>%
   filter(Experiment == "PC",
          dye == "SYBR",
          `Gate Name` == "SYBR Polygon")%>%
-  mutate(cells_mL = `Event Count`/0.075)%>%
+  mutate(cells_mL = `Event Count`/0.075,
+         cells_ul = cells_mL/1000)%>%
   group_by(timepoint, health, bath)%>%
   mutate(std = sd(cells_mL))%>%
+  rename('Day' = timepoint)%>%
+  filter(bath == "hot")%>%
   ungroup()
-  # filter(bath == "hot")
+
 
 
 # GRAPHING -- FCM ---------------------------------------------------------
-pdf("~/Documents/GitHub/Plan_C/data/plots/Plan_c_FCM.pdf", width = 7, height = 5)
-ggplot(fcm_sybr, aes(x = timepoint, y = cells_mL, color = health))+
+pdf("~/Documents/GitHub/Plan_C/data/plots/Plan_c_FCM.pdf", width = 15, height = 10)
+fcm_sybr%>%
+  ggplot(aes(x = Day, y = cells_ul, color = health))+
   geom_point(stat = "summary", fun.y = "mean") + 
   # geom_errorbar(aes(ymin = mean(cells_mL) - std, ymax = mean(cells_mL) + std)) +
   geom_line(aes(group = health), stat = "summary", fun.y = "mean") +
-  facet_wrap(~bath)
+  theme(
+    legend.position = "top",
+    plot.margin = unit(c(1,1,1.5,1.2), 'cm'),
+    # plot.margin = margin(2,.8,2,.8, "cm"),
+    axis.text.x = element_text(size = 15, angle = 60, hjust = 1),
+    axis.text.y = element_text(size = 20),
+    panel.background = element_rect(fill = "transparent"), # bg of the panel
+    plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    panel.grid.major = element_blank(), # get rid of major grid
+    panel.grid.minor = element_blank(), # get rid of minor grid
+    legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+    legend.box.background = element_rect(fill = "transparent"))
+  # facet_wrap(~bath)
 dev.off()
 
 
