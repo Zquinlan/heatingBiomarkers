@@ -51,6 +51,25 @@ fcm_names <- fcm_names_raw%>%
 setwd("~/Documents/GitHub/Plan_C/")
 surface_area_raw <- read_csv("~/Documents/GitHub/Plan_C/data/raw/physiology/Nubbin_sizing_notes.csv")
 
+doc_exclude <- read_xlsx("~/Documents/GitHub/Plan_C/data/raw/doc/DOC_exlude_variance.xlsx")$`Sample Code`%>%
+  as.vector()
+
+pc_doc_raw <- read_xlsx("~/Documents/GitHub/Plan_C/data/raw/doc/PlanC_DOC_upload.xlsx")%>%
+  filter(!`Sample Code` %in% doc_exclude)%>%
+  separate(`Sample Code`, c("Experiment", "Health", "Day"), sep = "_", remove = FALSE)%>%
+  separate(Health, c("Health", "Replicate"), sep = 2)%>%
+  separate(Day, c("Day", "Temperature"), sep = 2)%>%
+  mutate(Health = case_when(Health == "HE" ~ "Healthy",
+                            Health == "PB" ~ "Partially bleached",
+                            Health == "BL" ~ "Bleached",
+                            Health == "WA" ~ "Water control",
+                            TRUE ~ as.character(Health)),
+         Day = gsub("T", "", Day),
+         Temperature = case_when(Temperature == "C" ~ "Ambient",
+                                 Temperature == "H" ~ "Heated",
+                          TRUE ~ as.character(Temperature)))
+  
+
 # CLEANING -- FCM ---------------------------------------------------------
 fcm_raw <- fcm_names%>%
   map_df( ~as.data.frame(.), .id="plate")%>%
@@ -60,6 +79,7 @@ fcm_raw <- fcm_names%>%
   separate(plate, c("experiment_plate", "dye", "month", "day", "year", "plate", "number"))%>%
   unite(date, c("month", "day", "year"), sep = "-")%>%
   unite(plate_numnber, c("plate", "number"), sep = "_")%>%
+  # filter(!Sample %in% doc_exclude)%>%
   # filter(Sample != 'PC_HE2_T1H',
   #        Sample != 'PC_PB2_T1H',
   #        Sample != 'PC_BL3_T2H',
@@ -72,59 +92,61 @@ fcm_raw <- fcm_names%>%
   #        Sample != 'PC_BL1_T6H',
   #        Sample != 'PC_PB3_T6H',
   #        Sample != 'PC_BL1_T7H')%>%
-  separate(Sample, c("Experiment", "health", "Timepoint"), sep = "_")%>%
-  separate(health, c("health", "replicate"), sep = 2)%>%
-  separate(Timepoint, c("timepoint", "bath"), sep = 2)%>%
-  mutate(health = case_when(health == "HE" ~ "healthy",
-                            health == "PB" ~ "partially bleached",
-                            health == "BL" ~ "bleached",
-                            health == "WA" ~ "water control",
-                            TRUE ~ as.character(health)),
-         timepoint = gsub("T", "", timepoint),
-         bath = case_when(bath == "C" ~ "control",
-                          bath == "H" ~ "hot",
-                          TRUE ~ as.character(bath)))
+  separate(Sample, c("Experiment", "Health", "Day"), sep = "_", remove = FALSE)%>%
+  separate(Health, c("Health", "Replicate"), sep = 2)%>%
+  separate(Day, c("Day", "Temperature"), sep = 2)%>%
+  mutate(Health = case_when(Health == "HE" ~ "Healthy",
+                            Health == "PB" ~ "Partially bleached",
+                            Health == "BL" ~ "Bleached",
+                            Health == "WA" ~ "Water control",
+                            TRUE ~ as.character(Health)),
+         Day = gsub("T", "", Day),
+         Temperature = case_when(Temperature == "C" ~ "Ambient",
+                                 Temperature == "H" ~ "Heated",
+                          TRUE ~ as.character(Temperature)))
 
 fcm_sybr <- fcm_raw%>%
   filter(Experiment == "PC",
          dye == "SYBR",
          `Gate Name` == "SYBR Polygon")%>%
   # filter(bath == "hot")%>%
-  group_by(timepoint, health, bath)%>%
+  group_by(Day, Health, Temperature)%>%
   mutate(cells_mL = `Event Count`/0.075,
          cells_ul = cells_mL/1000,
          log10_ul = log10(cells_ul),
-         std = sd(log10_ul))%>%
-  rename('Day' = timepoint)%>%
-  ungroup()
+         std = sd(log10_ul))
 
-fcm_means <- fcm_sybr%>%
-  select(-c(1:5, replicate))%>%
-  group_by(Day, health, bath)%>%
-  summarize_if(is.numeric, mean)%>%
-  ungroup()
+# fcm_means <- fcm_sybr%>%
+#   select(-c(1:5, replicate))%>%
+#   group_by(Day, health, bath)%>%
+#   summarize_if(is.numeric, mean)%>%
+#   ungroup()
+
+
+
+# GRAPHING -- Color Pallette ----------------------------------------------
+health_colors <- c("#FD6467", "#E1AF00", "#0B775E","#78B7C5")
 
 
 # GRAPHING -- FCM ---------------------------------------------------------
 pdf("~/Documents/GitHub/Plan_C/data/plots/Plan_c_FCM.pdf", width = 15, height = 10)
-fcm_means%>%
+# Ambient for presentations
+fcm_sybr%>%
   unite(cb, c(health, bath), sep = "_", remove = FALSE)%>%
-  filter(Day < 5,
-         health != 'bleached')%>%
-  mutate(health = case_when(health == 'partially bleached' ~ 'Bleached',
-                            health == 'healthy' ~ 'Healthy',
-                            TRUE ~ 'water control'),
-         bath = case_when(bath == 'hot' ~ 'Heated',
-                          TRUE ~ 'Ambient'))%>%
+  mutate(health = as.factor(health),
+         health = fct_relevel(health, "Bleached", "Partially bleached"))%>%
   rename(`Initial Health` = health,
          Temperature = bath)%>%
+  filter(Temperature == 'Ambient')%>%
   ggplot(aes(x = Day, y = cells_ul, color = `Initial Health`)) +
-  geom_point(aes(group = cb), stat = "summary", fun.y = "mean", size = 2) + 
+  geom_point(aes(group = cb), stat = "identity", size = 2) + 
   # geom_errorbar(aes(ymin = mean(cells_mL) - std, ymax = mean(cells_mL) + std)) +
   geom_line(aes(group = cb, linetype = Temperature), stat = "summary", fun.y = "mean", lwd = 1.4) +
   ylab("Cells µL-1") +
   scale_linetype_manual(values=c("dashed", "solid")) +
-  scale_color_manual(values = c("#FD6467", "#0B775E","#78B7C5")) +
+  scale_color_manual(values = health_colors) +
+  scale_y_log10(limits = c(100,2600)) +
+  ylab(bquote(Cells ~µL^-1)) +
   theme(
     legend.position = "top",
     legend.text = element_text(size = 20),
@@ -144,6 +166,42 @@ fcm_means%>%
     # legend.background = element_rect(fill = "transparent"), # get rid of legend bg
     # legend.box.background = element_rect(fill = "transparent"))
   ) 
+
+fcm_sybr%>%
+  unite(cb, c(health, bath), sep = "_", remove = FALSE)%>%
+  mutate(health = as.factor(health),
+         health = fct_relevel(health, "Bleached", "Partially bleached"))%>%
+  rename(`Initial Health` = health,
+         Temperature = bath)%>%
+  filter(Temperature != 'Ambient')%>%
+  ggplot(aes(x = Day, y = cells_ul, color = `Initial Health`)) +
+  geom_point(aes(group = cb), stat = "identity", size = 2) + 
+  # geom_errorbar(aes(ymin = mean(cells_mL) - std, ymax = mean(cells_mL) + std)) +
+  geom_line(aes(group = cb, linetype = Temperature), stat = "summary", fun.y = "mean", lwd = 1.4) +
+  ylab("Cells µL-1") +
+  scale_linetype_manual(values=c("solid")) +
+  scale_color_manual(values = health_colors) +
+  scale_y_log10(limits = c(100,2600)) +
+  ylab(bquote(Cells ~µL^-1)) +
+  theme(
+    legend.position = "top",
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 25),
+    legend.key = element_rect(fill = "white",  color = "white"),
+    legend.key.size = unit(3, 'line'),
+    legend.box= "vertical",
+    plot.margin = unit(c(1,1,1.5,1.2), 'cm'),
+    # plot.margin = margin(2,.8,2,.8, "cm"),
+    axis.text.x = element_text(size = 30),
+    axis.text.y = element_text(size = 30),
+    axis.title = element_text(size = 30),
+    panel.background = element_rect(fill = "transparent"), # bg of the panel
+    plot.background = element_rect(fill = "transparent"), # bg of the plot
+    panel.grid.major = element_blank(), # get rid of major grid
+    panel.grid.minor = element_blank(), # get rid of minor grid
+    # legend.background = element_rect(fill = "transparent"), # get rid of legend bg
+    # legend.box.background = element_rect(fill = "transparent"))
+  ) 
 dev.off()
 
 pdf("~/Documents/GitHub/Plan_C/data/plots/Plan_c_FCM.pdf", width = 15, height = 10)
@@ -154,7 +212,7 @@ fcm_means%>%
   geom_point(stat = "summary", fun.y = "mean") + 
   # geom_errorbar(aes(ymin = log10_ul - std, ymax =  log10_ul + std)) +
   geom_line(aes(group = `Starting Health`), stat = "summary", fun.y = "mean") +
-  ylab('Cells µL-1') +
+  ylab(bquote(Cells ~µL^-1)) +
   theme(
     legend.position = "top",
     plot.margin = unit(c(1,1,1.5,1.2), 'cm'),
@@ -172,5 +230,89 @@ fcm_means%>%
 dev.off()
 
 
+# GRAPHING -- DOC ---------------------------------------------------------
+pdf("~/Documents/GitHub/Plan_C/data/plots/Plan_c_DOC.pdf", width = 15, height = 10)
+pc_doc_raw%>%
+  mutate(Health = as.factor(Health),
+         Health = fct_relevel(Health, "Bleached", "Partially bleached"))%>%
+  unite(cb, c(Health, Temperature), sep = "_", remove = FALSE)%>%
+  rename(`Initial Health` = Health)%>%
+  filter(Temperature == 'Ambient')%>%
+  ggplot(aes(Day, `DOC (µMC)`, color = `Initial Health`)) +
+  geom_point(stat = 'identity') +
+  geom_line(aes(group = cb, linetype = Temperature), stat = "summary", fun.y = "mean", lwd = 1.4) +
+  scale_linetype_manual(values=c("dashed", "solid")) +
+  scale_color_manual(values = health_colors) +
+  scale_x_discrete(limits = c(1,2,3,4,5,6,7)) +
+  labs(x = 'Day') +
+  ylim(65,176) +
+  theme(
+    legend.position = "top",
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 25),
+    legend.key = element_rect(fill = "transparent"),
+    legend.key.size = unit(3, 'line'),
+    legend.box= "vertical",
+    plot.margin = unit(c(1,1,1.5,1.2), 'cm'),
+    # plot.margin = margin(2,.8,2,.8, "cm"),
+    axis.text.x = element_text(size = 30),
+    axis.text.y = element_text(size = 30),
+    axis.title = element_text(size = 30),
+    panel.background = element_rect(fill = "transparent"), # bg of the panel
+    plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    panel.grid.major = element_blank(), # get rid of major grid
+    panel.grid.minor = element_blank()) # get rid of minor grid 
 
+
+pc_doc_raw%>%
+  mutate(Health = as.factor(Health),
+         Health = fct_relevel(Health, "Bleached", "Partially bleached"))%>%
+  unite(cb, c(Health, Temperature), sep = "_", remove = FALSE)%>%
+  rename(`Initial Health` = Health)%>%
+  filter(Temperature != 'Ambient')%>%
+  ggplot(aes(Day, `DOC (µMC)`, color = `Initial Health`)) +
+  geom_point(stat = 'identity') +
+  geom_line(aes(group = cb, linetype = Temperature), stat = "summary", fun.y = "mean", lwd = 1.4) +
+  scale_linetype_manual(values=c("solid")) +
+  scale_color_manual(values = health_colors) +
+  scale_x_discrete(limits = c(1,2,3,4,5,6,7)) +
+  labs(x = 'Day', y = "Dissolved Orgnic Carbon (µMC)") +
+  ylim(65,176) +
+  theme(
+    legend.position = "top",
+    legend.text = element_text(size = 20),
+    legend.title = element_text(size = 25),
+    legend.key = element_rect(fill = "transparent"),
+    legend.key.size = unit(3, 'line'),
+    legend.box= "vertical",
+    plot.margin = unit(c(1,1,1.5,1.2), 'cm'),
+    # plot.margin = margin(2,.8,2,.8, "cm"),
+    axis.text.x = element_text(size = 30),
+    axis.text.y = element_text(size = 30),
+    axis.title = element_text(size = 30),
+    panel.background = element_rect(fill = "transparent"), # bg of the panel
+    plot.background = element_rect(fill = "transparent", color = NA), # bg of the plot
+    panel.grid.major = element_blank(), # get rid of major grid
+    panel.grid.minor = element_blank()) # get rid of minor grid
+dev.off()
+
+# GRAPHONG -- combine DOC FCM bad -----------------------------------------------------
+fcm_doc <- fcm_sybr%>%
+  full_join(pc_doc_raw%>%
+              rename(Sample = `Sample Code`), by = c('Sample', 'Health', 'Day', 'Temperature'))
+
+fcm_doc%>%
+  ungroup()%>%
+  mutate(Health = as.factor(Health),
+         Health = fct_relevel(Health, "Bleached", "Partially bleached"))%>%
+  unite(cb, c(Health, Temperature), sep = "_", remove = FALSE)%>%
+  rename(`Initial Health` = Health)%>%
+  filter(Temperature != 'Ambient')%>%
+  ggplot(aes(x = Day, color = `Initial Health`)) +
+  # geom_point(aes(y = `DOC (µMC)`), stat = 'identity') +
+  geom_line(aes(y = `DOC (µMC)`, group = cb, linetype = "dashed"), stat = "summary", fun.y = "mean", lwd = 1.4) +
+  # geom_point(aes(y = `cells_ul`)) +
+  geom_line(aes(y = `cells_ul`, group = cb, linetype = "solid"), stat = "summary", fun.y = "mean", lwd = 1.4) +
+  scale_y_continuous(name = "DOC (µMC)",
+  sec.axis = sec_axis(~.*100, name= bquote(Cells ~µL^-1)))
 
