@@ -39,4 +39,4 @@ Libraries - tidyverse, broom, data.table, DescTools, readxl, vegan, ape, lme4, M
 1) Clone the repo to your desktop
 2) install R and the required libraries using the install.libraries() function
 3) Open the .R file in the code directory
-4) The locations of all the files are hard coded in the second section of the code "Loading -- Datasets". Change the beginnig file paths "'~/Documents/GitHub/greeneMaui/" to the location where you have cloned the respository manually
+4) The locations of all the files are hard coded in the second section of the code "Loading -- Datasets". Change the working directory at the beginning of the script to the location where you have cloned the respository manually
